@@ -17,8 +17,6 @@ int humidity = 0;
 int head_index_f = 0;
 int sunsetHour = 0;
 int sunsetMinute = 0;
-int UTCOffset = 0;
-int DSTStatus = 0;
 char temp_string[64];
 char hour_string[64];
 char minute_string[64];
@@ -34,61 +32,48 @@ void setup() {
   Particle.variable("humidity_%", &humidity, INT);
   Particle.variable("sunsetHour", &sunsetHour, INT);
   Particle.variable("sunsetMinute", &sunsetMinute, INT);
-  Particle.variable("isDST", &DSTStatus, INT);
 }
 
 
-bool isDST()
-{ // (Central) European Summer Timer calculation (last Sunday in March/October)
+// Warning, contains a hack
+bool isDST() {
   int dayOfMonth = Time.day();
   int month = Time.month();
   int dayOfWeek = Time.weekday() - 1; // make Sunday 0 .. Saturday 6
+  const int MARCH = 3;
+  const int APRIL = 4;
+  const int OCTOBER = 10;
+  const int NOVEMBER = 11;
+  bool isDaylightSavings = false;
 
-  if (month >= 4 && month <= 9)
-  { // April to September definetly DST
-    return true;
-  }
-  else if (month < 3 || month > 10)
-  { // before March or after October is definetly standard time
-    return false;
-  }
-
-  // March and October need deeper examination
-  boolean lastSundayOrAfter = (dayOfMonth - dayOfWeek > 24);
-  if (!lastSundayOrAfter)
-  { // before switching Sunday
-    return (month == 10); // October DST will be true, March not
+  // April to October is DST
+  if ((month >= APRIL) && (month <= OCTOBER)) {
+    isDaylightSavings = true;
   }
 
-  if (dayOfWeek)
-  { // AFTER the switching Sunday
-    return (month == 3); // for March DST is true, for October not
+  // March after second Sunday is DST
+  if (month == MARCH) {
+    // voodoo magic
+    if ((dayOfMonth - dayOfWeek) > 8) {
+      isDaylightSavings = true;
+    }
   }
 
-  int secSinceMidnightUTC = Time.now() % 86400;
-  boolean dayStartedAs = (month == 10); // DST in October, in March not
-  // on switching Sunday we need to consider the time
-  if (secSinceMidnightUTC >= 1*3600)
-  { // 1:00 UTC (=1:00 GMT/2:00 BST or 2:00 CET/3:00 CEST)
-    return !dayStartedAs;
+  // November before first Sunday is DST
+  if (month == NOVEMBER) {
+    // voodoo magic
+    if (!((dayOfMonth - dayOfWeek) > 1)) {
+      isDaylightSavings = true;
+    }
   }
 
-  return dayStartedAs;
+  return isDaylightSavings;
 }
 
 
 void getSunset() {
 
-  DSTStatus = isDST();
-
-  if (DSTStatus) {
-    UTCOffset = PDT_OFFSET;
-  }
-  else {
-    UTCOffset = PST_OFFSET;
-  }
-
-  Time.zone(UTCOffset);
+  Time.zone(isDST() ? PDT_OFFSET : PST_OFFSET);
 
   sunsetBerkeley.updateSolarTimes();
   sunsetHour = sunsetBerkeley.sunSetHour;
