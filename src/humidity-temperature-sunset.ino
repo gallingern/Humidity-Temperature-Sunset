@@ -1,3 +1,4 @@
+#include "Calendar.h"
 #include "Sunrise.h"
 #include "PietteTech_DHT.h"
 #define DHTTYPE  AM2302         // Sensor type DHT11/21/22/AM2301/AM2302
@@ -6,8 +7,6 @@
 // Berkeley
 const int LATITUDE   =  37.8716;
 const int LONGITUDE  = -122.2727;
-const int PST_OFFSET = -8;
-const int PDT_OFFSET = -7;
 
 PietteTech_DHT DHT(DHTPIN, DHTTYPE);
 Sunrise sunsetBerkeley(LATITUDE,LONGITUDE);
@@ -15,72 +14,31 @@ Sunrise sunsetBerkeley(LATITUDE,LONGITUDE);
 int temp_f = 0;
 int humidity = 0;
 int head_index_f = 0;
-int sunsetHour = 0;
-int sunsetMinute = 0;
+int sunset_time = 0; // in minutes past midnight
+const int hour_to_minute = 60;
 char temp_string[64];
-char hour_string[64];
-char minute_string[64];
-int nextPublish = millis();
-int publishInterval = 10000; // 10 seconds
+char time_string[64];
+int next_publish = millis();
+int publish_interval = 10000; // 10 seconds
 
 
 void setup() {
-  Serial.begin(9600);
-
   Particle.variable("temp_f", &temp_f, INT);
   Particle.variable("head_index_f", &head_index_f, INT);
   Particle.variable("humidity_%", &humidity, INT);
-  Particle.variable("sunsetHour", &sunsetHour, INT);
-  Particle.variable("sunsetMinute", &sunsetMinute, INT);
-}
-
-
-// Warning, contains a hack
-bool isDST() {
-  int dayOfMonth = Time.day();
-  int month = Time.month();
-  int dayOfWeek = Time.weekday() - 1; // make Sunday 0 .. Saturday 6
-  const int MARCH = 3;
-  const int APRIL = 4;
-  const int OCTOBER = 10;
-  const int NOVEMBER = 11;
-  bool isDaylightSavings = false;
-
-  // April to October is DST
-  if ((month >= APRIL) && (month <= OCTOBER)) {
-    isDaylightSavings = true;
-  }
-
-  // March after second Sunday is DST
-  if (month == MARCH) {
-    // voodoo magic
-    if ((dayOfMonth - dayOfWeek) > 8) {
-      isDaylightSavings = true;
-    }
-  }
-
-  // November before first Sunday is DST
-  if (month == NOVEMBER) {
-    // voodoo magic
-    if (!((dayOfMonth - dayOfWeek) > 1)) {
-      isDaylightSavings = true;
-    }
-  }
-
-  return isDaylightSavings;
+  Particle.variable("sunset_time", &sunset_time, INT);
 }
 
 
 void getSunset() {
 
-  Time.zone(isDST() ? PDT_OFFSET : PST_OFFSET);
+  Time.zone(isDaylightSavingsTime() ? PDT_OFFSET : PST_OFFSET);
 
   sunsetBerkeley.updateSolarTimes();
-  sunsetHour = sunsetBerkeley.sunSetHour;
-  sunsetMinute = sunsetBerkeley.sunSetMinute;
+  sunset_time = sunsetBerkeley.sunSetHour * hour_to_minute +
+                sunsetBerkeley.sunSetMinute;
 
-  sprintf(hour_string, "%d", sunsetHour);
-  sprintf(minute_string, "%d", sunsetMinute);
+  sprintf(sunset_string, "%d", sunset_time);
 }
 
 
@@ -95,8 +53,7 @@ void heatIndex() {
 
 void publish() {
   Particle.publish("temp", temp_string, 60, PRIVATE);
-  Particle.publish("hour", hour_string, 60, PRIVATE);
-  Particle.publish("minute", minute_string, 60, PRIVATE);
+  Particle.publish("sunset", sunset_string, 60, PRIVATE);
   Particle.publish("time", Time.timeStr(), 60, PRIVATE);
 }
 
@@ -108,8 +65,8 @@ void loop() {
   heatIndex();
   getSunset();
 
-  if (millis() > nextPublish) {
+  if (millis() > next_publish) {
     publish();
-    nextPublish = millis() + publishInterval;
+    next_publish = millis() + publish_interval;
   }
 }
