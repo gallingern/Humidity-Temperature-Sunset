@@ -17,7 +17,7 @@ int head_index_f = 0;
 int sunset_time = 0; // in minutes past midnight
 const int hour_to_minute = 60;
 char temp_string[64];
-char time_string[64];
+char sunset_string[64];
 int next_publish = millis();
 int publish_interval = 10000; // 10 seconds
 
